@@ -1,0 +1,126 @@
+
+---
+title: 'Practical Machine Learning: Prediction Project'
+output:
+  html_document:
+    keep_md: yes
+  pdf_document: default
+  word_document: default
+---
+## Introduction
+ In this project, the goal will be to use data given to us from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to predict the labels for the test set observations. The participants were asked to perform barbell lifts correctly and incorrectly in 5 different ways. We will create the model as well as estimate the out of sample error and make our predictions.
+ 
+
+## Loading and Summary of data
+```{r}
+#load libraries
+library(caret)
+#load datasets
+pmltest <- read.csv("pml-testing.csv")
+pmltrain <- read.csv("pml-training.csv")
+```
+
+To estimate the out of sample error for the dataset, we split the full training data (pmltrain) into 1) a training set (pmltrain1) and 2) a validation set (pmltrain2). We do this in a random fashion:
+
+```{r}
+set.seed(1)
+Train <- createDataPartition(y=pmltrain$classe, p=0.7, list=F)
+pmltrain1 <- pmltrain[Train, ]
+pmltrain2 <- pmltrain[-Train, ]
+```
+
+
+We proceed to reduce the number of features by removing variables with very low variance (close to zero), variables that frequently exhibit NA values and variables that we do not need for our prediction purposes:
+
+
+```{r}
+# removal of variables with variance near zero
+zerovariance <- nearZeroVar(pmltrain1)
+pmltrain1 <- pmltrain1[, -zerovariance]
+pmltrain2 <- pmltrain2[, -zerovariance]
+
+# removal of variables frequently exhibiting NA values
+NAvalues <- sapply(pmltrain1, function(x) mean(is.na(x))) > 0.95
+pmltrain1 <- pmltrain1[, NAvalues==F]
+pmltrain2 <- pmltrain2[, NAvalues==F]
+
+# remove variables we do not need for our prediction purposes (first five variables)
+pmltrain1 <- pmltrain1[, -(1:5)]
+pmltrain2 <- pmltrain2[, -(1:5)]
+```
+
+
+## Building the Model
+We start with a Random Forest Model and fit the model on the data pmltrain1, instructing the "train" function to use 3-fold cross-validation to select the optimal tuning parameters for the Random Forest Model model:
+
+```{r}
+# use 3-fold CV to select optimal the tuning parameters
+fittingCtrl <- trainControl(method="cv", number=3, verboseIter=F)
+
+# fit the model onto pmltrain1
+fitted <- train(classe ~ ., data=pmltrain1, method="rf", trControl=fittingCtrl)
+```
+
+```{r}
+# print the final model to observe the chosen optimal tuning parameters
+fitted$finalModel
+```
+
+It can be seen that at each spilt, 500 trees were used and 27 variables were tried.
+
+## Evaluation and Selection of the Model
+We next use the fitted model to predict the label ("classe") in the dataset pmltrain2 and use the confusion matrix to compare the predicted labels against the actual labels:
+
+```{r}
+# model to predict classe in validation set (pmltrain2)
+predictions <- predict(fitted, newdata=pmltrain2)
+
+# confusion matrix to get estimate of out of sample error
+confusionMatrix(pmltrain2$classe, predictions)
+```
+
+The accuracy is 99.8%, showing that the predicted accuracy for the out of sample error is 0.2%. Thus, we will use Random Forest Model for prediction on the test set.
+
+## Selected Model Re-training
+We re-train the model on the full training set (pmltrain) in order to produce the most accurate predictions:
+
+```{r}
+# removal of variables with variance near 
+zerovariance <- nearZeroVar(pmltrain)
+pmltrain <- pmltrain[, -zerovariance]
+pmltest <- pmltest[, -zerovariance]
+
+# removal of variables frequently exhibiting NA values
+mostlyNA <- sapply(pmltrain, function(x) mean(is.na(x))) > 0.95
+pmltrain <- pmltrain[, mostlyNA==F]
+pmltest <- pmltest[, mostlyNA==F]
+
+# remove variables we do not need for our prediction purposes (first five variables)
+pmltrain <- pmltrain[, -(1:5)]
+pmltest <- pmltest[, -(1:5)]
+
+# re-fit model using full training set (pmltrain)
+fittedCtrl <- trainControl(method="cv", number=3, verboseIter=F)
+fitted <- train(classe ~ ., data=pmltrain, method="rf", trControl=fittedCtrl)
+```
+
+## Making Test Set Predictions
+We now use model fit on pmltrain in order to predict the label for the observations in pmltest:
+
+```{r}
+# predict on test set
+predictions <- predict(fitted, newdata=pmltest)
+predictions <- as.character(predictions)
+
+# Write predictions to files
+pml_write <- function(x) {
+    n <- length(x)
+    for(i in 1:n) {
+        filename <- paste0("problem_id_", i, ".txt")
+        write.table(x[i], file=filename, quote=F, row.names=F, col.names=F)
+    }
+}
+
+# Creating prediction files
+pml_write(predictions)
+```
