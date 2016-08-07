@@ -124,3 +124,5 @@ pml_write <- function(x) {
 # Creating prediction files
 pml_write(predictions)
 ```
+
+The 20 predictions are written in to the 20 files (problem_id_1.txt to problem_id_20.txt).
